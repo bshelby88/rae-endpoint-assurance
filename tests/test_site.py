@@ -6,7 +6,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
-HTML_FILES = [ROOT / "index.html", ROOT / "field-guide" / "index.html"]
+HTML_FILES = [ROOT / "index.html", ROOT / "field-guide" / "index.html", ROOT / "request-fit-check" / "index.html"]
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -69,8 +69,8 @@ class SiteTests(unittest.TestCase):
         self.assertIn("production implementation is excluded", combined.lower())
 
     def test_tagged_non_binding_cta(self):
-        guide = HTML_FILES[1].read_text(encoding="utf-8")
-        parser = PageParser(); parser.feed(guide)
+        request_page = HTML_FILES[2].read_text(encoding="utf-8")
+        parser = PageParser(); parser.feed(request_page)
         mailtos = [x for x in parser.links if x.startswith("mailto:")]
         self.assertEqual(len(mailtos), 1)
         parsed = urlparse(mailtos[0])
@@ -79,9 +79,26 @@ class SiteTests(unittest.TestCase):
         subject = unquote(q["subject"][0]).lower()
         body = unquote(q["body"][0])
         self.assertIn("non-binding", subject)
-        self.assertIn("source=field-guide", body)
-        self.assertIn("campaign=endpoint-assurance-cycle-3", body)
+        self.assertIn("source=fit-check-page", body)
+        self.assertIn("campaign=endpoint-assurance-cycle-4", body)
         self.assertIn("request=fit-check", body)
+        for prompt in ["organization=", "requestor role=", "business contact=", "authority confirmed=", "customer-controlled service/domain=", "public url 1=", "public url 2 (optional)=", "public url 3 (optional)=", "observed concern=", "desired assessment window and time zone=", "permission to send one-page scope="]:
+            self.assertIn(prompt, body.lower())
+        self.assertNotIn("authority confirmed=yes", body.lower())
+        self.assertNotIn("permission to send one-page scope=yes", body.lower())
+        self.assertLess(len(mailtos[0]), 1800)
+
+    def test_fit_check_is_privacy_minimized_and_non_binding(self):
+        page = HTML_FILES[2].read_text(encoding="utf-8").lower()
+        for phrase in ["static page collects and transmits nothing", "email provider to the rae gmail inbox", "do not include credentials", "preliminary only", "does not establish operational authority", "does not create an order", "does not authorize testing", "does not collect payment", "proposed founding-client price"]:
+            self.assertIn(phrase, page)
+        for forbidden in ["<form", "<input", "<script", "<iframe", "password=", "api key=", "customer data=", "localstorage", "document.cookie"]:
+            self.assertNotIn(forbidden, page)
+
+    def test_all_conversion_links_route_through_fit_check_page(self):
+        for path in HTML_FILES[:2]:
+            self.assertIn('href="../request-fit-check/"' if path.parent.name == "field-guide" else 'href="request-fit-check/"', path.read_text(encoding="utf-8"))
+        self.assertIn("https://bshelby88.github.io/rae-endpoint-assurance/request-fit-check/", (ROOT / "README.md").read_text(encoding="utf-8"))
 
     def test_synthetic_sample(self):
         sample = json.loads((ROOT / "field-guide" / "synthetic-sample.json").read_text(encoding="utf-8"))
